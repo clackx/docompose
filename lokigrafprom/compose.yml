@@ -1,0 +1,97 @@
+services:
+  prometheus:
+    image: prom/prometheus
+    container_name: moni_prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.config.file=/etc/prometheus/web.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    ports:
+      - 9090:9090
+    restart: unless-stopped
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    networks:
+      - monitor-net
+
+
+  grafana:
+    image: grafana/grafana
+    container_name: moni_grafana
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+    environment:
+      - GF_SERVER_DOMAIN=${GRAFANA_URL}
+      - GF_SERVER_ROOT_URL=https://${GRAFANA_URL}/
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - monitor-net
+
+
+  loki:
+    image: grafana/loki:latest
+    container_name: moni_loki
+    ports:
+      - 3100:3100
+    volumes:
+      - loki-data:/data
+      - ./loki/loki.yaml:/etc/loki/local-config.yaml
+    networks:
+      - monitor-net
+
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: moni_nodexporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - --collector.filesystem.ignored-mount-points
+      - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    expose:
+      - 9100
+    networks:
+      - monitor-net
+
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor
+    container_name: moni_cadvisor
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    command:
+      - '-enable_metrics=cpu,memory,network,diskIO'
+      - '-docker_only=true'
+      - '-housekeeping_interval=10s'
+    expose:
+      - 8080
+    networks:
+      - monitor-net
+
+
+networks:
+  monitor-net:
+
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki-data:

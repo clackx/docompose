@@ -1,0 +1,4 @@
+# basic_auth_users:
+#     admin: '$2b$12$vtorh4LT15XUmxrnfdN/LOcmV2WeNBstLPNtMeBMWwJLGwAhqTORS'
+
+# base64-encoded password https://prometheus.io/docs/guides/basic-auth/

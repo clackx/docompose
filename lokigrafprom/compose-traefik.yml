@@ -1,0 +1,121 @@
+services:
+  prometheus:
+    image: prom/prometheus
+    container_name: monic_prometheus
+    user: "65534:65534"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    expose:
+      - 9090
+    restart: unless-stopped
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - ./prometheus/data:/prometheus
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.prometheus.rule=Host(`${PROMETHEUS_URL}`)
+      - traefik.http.services.prometheus.loadbalancer.server.port=9090
+      - traefik.http.routers.prometheus.entrypoints=https
+      - traefik.http.routers.prometheus.tls=true
+      - traefik.http.routers.prometheus.tls.certresolver=letsEncrypt
+      - traefik.http.middlewares.prom-auth.basicauth.users=${PROMETH_AUTH}
+      - traefik.http.routers.prometheus.middlewares=prom-auth
+    networks:
+      - traefik
+
+
+  grafana:
+    image: grafana/grafana
+    container_name: monic_grafana
+    user: "65534:65534"
+    expose:
+      - 3000
+    restart: unless-stopped
+    environment:
+      - GF_SERVER_DOMAIN=${GRAFANA_URL}
+      - GF_SERVER_ROOT_URL=https://${GRAFANA_URL}/
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+    depends_on:
+      - prometheus
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.grafana.rule=Host(`${GRAFANA_URL}`)
+      - traefik.http.services.grafana.loadbalancer.server.port=3000
+      - traefik.http.routers.grafana.entrypoints=https
+      - traefik.http.routers.grafana.tls=true
+      - traefik.http.routers.grafana.tls.certresolver=letsEncrypt
+    networks:
+      - traefik
+
+
+  loki:
+    image: grafana/loki:latest
+    container_name: monic_loki
+    expose:
+      - 3100
+    volumes:
+      - loki-data:/data
+      - ./loki/loki.yaml:/etc/loki/local-config.yaml
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.loki.rule=Host(`${LOKI_URL}`)
+      - traefik.http.services.loki.loadbalancer.server.port=3100
+      - traefik.http.routers.loki.entrypoints=https
+      - traefik.http.routers.loki.tls=true
+      - traefik.http.routers.loki.tls.certresolver=letsEncrypt
+      - traefik.http.middlewares.loki-auth.basicauth.users=${LOKI_AUTH}
+      - traefik.http.routers.loki.middlewares=loki-auth
+    networks:
+      - traefik
+
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: monic_nodexporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - --collector.filesystem.ignored-mount-points
+      - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    expose:
+      - 9100
+    networks:
+      - traefik
+
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor
+    container_name: monic_cadvisor
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    command:
+      - '-enable_metrics=cpu,memory,network,diskIO'
+      - '-docker_only=true'
+      - '-housekeeping_interval=10s'
+    expose:
+      - 8080
+    networks:
+      - traefik
+
+
+networks:
+  traefik:
+    external: true
+
+volumes:
+  loki-data:
