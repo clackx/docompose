@@ -1,0 +1,20 @@
+http:
+  routers:
+    host:
+      entryPoints:
+      - https
+      service: service-host
+      rule: Host(`bots.sqrcat.ru`) && PathPrefix(`/myip`)
+      tls:
+        certResolver: letsEncrypt
+  middlewares:
+    strippref:
+      stripprefix:
+        prefixes: /myip
+
+  services:
+    service-host:
+      loadBalancer:
+        servers:
+        - url: http://172.17.0.1:8088/
+        passHostHeader: true
